@@ -45,13 +45,13 @@ Ajoutez la dépendance dans votre `Cargo.toml` :
 **Pour le RP2040 feature par défaut**
 ```toml
 [dependencies.embassy-rp-hc05]
-version = "0.1.0"
+version = "0.1.1"
 ```
 
 **Pour le RP235x**
 ```toml
 [dependencies]
-embassy-rp-hc05 = { version = "0.1.0", default-features = false, features = ["rp235x"] }
+embassy-rp-hc05 = { version = "0.1.1", default-features = false, features = ["rp235x"] }
 ```
 
 > **Compatibilité :** Cette crate supporte `embassy-rp` de la version `0.4.0` à `0.10.x+`.
@@ -494,7 +494,7 @@ async fn main(spawner: Spawner) {
 
 ## Historique et Compatibilité
 
-Il est recommandé d'utiliser la version **0.1.0 ou supérieure**.
+Il est recommandé d'utiliser la version **0.1.1 ou supérieure**.
 
 Cette crate est compatible avec une large plage de versions d'`embassy-rp` (v0.4.0 à v0.10.0+).
 Si vous rencontrez un problème de compilation ou un comportement inattendu, n'hésitez pas à

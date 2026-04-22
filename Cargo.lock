@@ -295,7 +295,7 @@ dependencies = [
 
 [[package]]
 name = "embassy-rp-hc05"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "embassy-rp",
  "itoa",
