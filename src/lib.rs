@@ -2,7 +2,7 @@
 // GPL-2.0-or-later
 //! # embassy-rp-hc05
 //!
-//! Driver async `no_std` pour le module Bluetooth **HC-05** testé sur
+//! Wrapper async `no_std` pour le module Bluetooth **HC-05** testé sur
 //! microcontrôleur **RP2040** / **RP235x**, basé sur le framework [Embassy](https://embassy.dev).
 //!
 //! ## Câblage minimal
@@ -31,7 +31,7 @@
 use embassy_rp::gpio::Input;
 use embassy_rp::uart::{Async, Error as UartError, Uart};
 
-/// Erreurs possibles du driver HC-05.
+/// Erreurs possibles du wrapper HC-05.
 #[derive(Debug)]
 pub enum BluetoothError {
     /// Erreur UART sous-jacente propagée depuis Embassy.
@@ -44,7 +44,7 @@ impl From<UartError> for BluetoothError {
     }
 }
 
-/// Driver principal pour le module HC-05.
+/// Wrapper principal pour le module HC-05.
 ///
 /// Encapsule un [`Uart`] Embassy en mode asynchrone et, optionnellement,
 /// une pin `STATE` pour détecter la connexion Bluetooth active.

@@ -4,7 +4,7 @@
 
 # embassy-rp-hc05
 
-Driver async `no_std` minimaliste pour le module Bluetooth série **HC-05**,
+Wrapper async `no_std` minimaliste pour le module Bluetooth série **HC-05**,
 testé sur microcontrôleur **RP2040** à tester sur **RP235x**, basé sur le framework [Embassy](https://embassy.dev).
 
 ---
@@ -15,7 +15,7 @@ Le **HC-05** est un module Bluetooth Classic (SPP: Serial Port Profile) qui expo
 une interface UART simple. Il permet de créer une liaison série sans fil entre votre
 microcontrôleur et un smartphone, PC ou autre appareil Bluetooth.
 
-Ce driver encapsule l'UART asynchrone d'Embassy et expose une API simple pour envoyer des données, détecter l'état de la connexion et recevoir des commandes via la fonction read_line. Fidèle à la philosophie de Rust, ce projet impose #![forbid(unsafe_code)] pour garantir une sécurité mémoire absolue.
+Ce wrapper encapsule l'UART asynchrone d'Embassy et expose une API simple pour envoyer des données, détecter l'état de la connexion et recevoir des commandes via la fonction read_line. Fidèle à la philosophie de Rust, ce projet impose #![forbid(unsafe_code)] pour garantir une sécurité mémoire absolue.
 
 ---
 
@@ -71,7 +71,7 @@ embassy-rp-hc05 = { version = "0.1.0", default-features = false, features = ["rp
 
 ### `BluetoothHandler::new(uart, state_pin) -> Self`
 
-Crée le driver en prenant possession de l'UART Embassy et d'une pin `STATE` optionnelle.
+Crée le wrapper en prenant possession de l'UART Embassy et d'une pin `STATE` optionnelle.
 
 ```rust
 let mut bt = BluetoothHandler::new(uart, Some(state_input));
