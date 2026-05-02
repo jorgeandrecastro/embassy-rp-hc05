@@ -5,9 +5,24 @@
 # embassy-rp-hc05
 
 Wrapper async `no_std` minimaliste pour le module Bluetooth série **HC-05**,
-testé sur microcontrôleur **RP2040** à tester sur **RP235x**, basé sur le framework [Embassy](https://embassy.dev).
+testé sur microcontrôleur **RP2040*, basé sur le framework [Embassy](https://embassy.dev).
 
 ---
+
+## Update v0.2.0
+
+- Remplacement des plages de compatibilité par des versions explicites afin d’assurer une meilleure stabilité et reproductibilité des builds.
+
+### Dépendances
+
+```toml
+[dependencies]
+itoa = "1.0"
+[dependencies.embassy-rp]
+version = "0.10"
+features = ["unstable-pac"]
+
+```
 
 ## Description
 
@@ -45,16 +60,16 @@ Ajoutez la dépendance dans votre `Cargo.toml` :
 **Pour le RP2040 feature par défaut**
 ```toml
 [dependencies.embassy-rp-hc05]
-version = "0.1.1"
+version = "0.2.0"
 ```
 
 **Pour le RP235x**
 ```toml
 [dependencies]
-embassy-rp-hc05 = { version = "0.1.1", default-features = false, features = ["rp235x"] }
+embassy-rp-hc05 = { version = "0.2.0", default-features = false, features = ["rp235x"] }
 ```
 
-> **Compatibilité :** Cette crate supporte `embassy-rp` de la version `0.4.0` à `0.10.x+`.
+> **Compatibilité :** Cette crate dépends de: `embassy-rp` la version ` `0.10.x+`.
 
 ---
 
@@ -324,160 +339,6 @@ async fn main(_spawner: Spawner) {
     }
 }
 ```
-# Exemple Sigmoide , Enoie de messages asynchrone et affichage Oled sans lock
-Combiné avec [`embassy-rp-gl5528`](https://crates.io/crates/embassy-rp-gl5528)
-et [`sigmoid-q15`](https://crates.io/crates/sigmoid-q15) et [`embassy-ssd1306`](https://crates.io/crates/embassy-ssd1306)
-
-
-````rust
-#![no_std]
-#![no_main]
-
-use cortex_m_rt as _;
-use embassy_executor::Spawner;
-use embassy_rp::i2c::{Config as I2cConfig, I2c, Async as I2cAsync};
-use embassy_time::Timer; 
-use {panic_halt as _, embassy_rp as _};
-
-use embassy_ssd1306::Ssd1306;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::mutex::Mutex;
-use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
-
-use embassy_rp::bind_interrupts;
-use embassy_rp::peripherals::{I2C0, UART0}; 
-use rp2040_linker as _; 
-
-use embassy_rp::gpio::{Output, Level, Pull, Input};
-use embassy_rp::adc::{Adc, Config as AdcConfig, Channel, InterruptHandler as AdcInterruptHandler};
-use embassy_rp::i2c::InterruptHandler as I2cInterruptHandler;
-use embassy_rp::uart::{Uart, Config as UartConfig, InterruptHandler as UartInterruptHandler};
-
-use sigmoid_q15::sigmoid_q15;
-use embassy_rp_gl5528::Gl5528; 
-use static_cell::StaticCell;
-
-// On utilise la crate
-use embassy_rp_hc05::BluetoothHandler;
-
-bind_interrupts!(struct Irqs {
-    I2C0_IRQ => I2cInterruptHandler<I2C0>;
-    ADC_IRQ_FIFO => AdcInterruptHandler;
-    UART0_IRQ => UartInterruptHandler<UART0>;
-});
-
-// IMPORTANT : Le Mutex permet aux deux tâches d'accéder au BT sans se bloquer
-static BT_HANDLER: StaticCell<Mutex<NoopRawMutex, BluetoothHandler<'static>>> = StaticCell::new();
-
-// TÂCHE 1 : L'AFFICHAGE ET L'ENVOI (Fluide)
-#[embassy_executor::task]
-async fn ui_task(
-    mut oled: Ssd1306<I2cDevice<'static, NoopRawMutex, I2c<'static, I2C0, I2cAsync>>>,
-    mut light_sensor: Gl5528<'static>,
-    bt_mutex: &'static Mutex<NoopRawMutex, BluetoothHandler<'static>>,
-) {
-    let _ = oled.init().await;
-    let test_points: [i16; 5] = [i16::MIN, -16384, 0, 16384, i16::MAX];
-    let mut idx = 0;
-
-    loop {
-        let x_in = test_points[idx];
-        let y_out = sigmoid_q15(x_in);
-        let lux_raw = light_sensor.read_raw().await;
-
-        //  TENTATIVE D'ENVOI SANS BLOQUER 
-        // try_lock() permet de vérifier si la clé est disponible. 
-        // Si la rx_task attend un message, try_lock() renverra None,
-        // et on passera directement à l'affichage OLED !
-        if let Ok(mut bt) = bt_mutex.try_lock() {
-            if bt.is_connected() {
-                let _ = bt.send("Sig: ").await;
-                let _ = bt.send_i16_line(x_in).await;
-                let _ = bt.send_i16_line(y_out).await;
-            }
-        }
-
-        //  MISE À JOUR OLED (S'exécute quoi qu'il arrive) 
-        oled.clear();
-        oled.draw_str(10, 0, b"SYSTEME ACTIF");
-        oled.draw_str(0, 2, b"X_in:");
-        oled.draw_i16(40, 2, x_in);
-        oled.draw_str(0, 4, b"Sig:");
-        oled.draw_i16(40, 4, y_out);
-        oled.draw_str(0, 6, b"Lux:");
-        oled.draw_i16(40, 6, lux_raw as i16);
-        let _ = oled.flush().await;
-
-        idx = (idx + 1) % test_points.len();
-        Timer::after_millis(500).await;
-    }
-}
-
-//  TÂCHE 2 : LA RÉCEPTION (Elle peut freezer, elle est toute seule) 
-#[embassy_executor::task]
-async fn rx_task(
-    bt_mutex: &'static Mutex<NoopRawMutex, BluetoothHandler<'static>>,
-) {
-    let mut rx_buf = [0u8; 32];
-
-    loop {
-        let mut n = 0;
-        {
-            let mut bt = bt_mutex.lock().await;
-            if bt.is_connected() {
-                // Cette ligne attend (freeze cette tâche), mais pas l'OLED !
-                if let Ok(count) = bt.read_line(&mut rx_buf).await {
-                    n = count;
-                }
-            }
-        }
-
-        if n > 0 {
-            let mut bt = bt_mutex.lock().await;
-            let _ = bt.send("Pico a bien recu: ").await;
-            if let Ok(msg) = core::str::from_utf8(&rx_buf[..n]) {
-                let _ = bt.send(msg).await;
-            }
-        }
-        Timer::after_millis(10).await;
-    }
-}
-
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
-    let p = embassy_rp::init(Default::default());
-    
-    // I2C & OLED
-    let mut i2c_config = I2cConfig::default();
-    i2c_config.frequency = 400_000; 
-    let i2c_bus = I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, Irqs, i2c_config);
-    static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<'static, I2C0, I2cAsync>>> = StaticCell::new();
-    let i2c_mutex = I2C_BUS.init(Mutex::new(i2c_bus));
-    let oled = Ssd1306::new(I2cDevice::new(i2c_mutex), 0x3C);
-
-    // ADC & CAPTEUR
-    let adc = Adc::new(p.ADC, Irqs, AdcConfig::default());
-    let light_sensor = Gl5528::new(adc, Channel::new_pin(p.PIN_26, Pull::None));
-
-    // UART & BLUETOOTH
-    let mut uart_cfg = UartConfig::default();
-    uart_cfg.baudrate = 9600;
-    let uart = Uart::new(p.UART0, p.PIN_0, p.PIN_1, Irqs, p.DMA_CH0, p.DMA_CH1, uart_cfg);
-    
-    let bt = BluetoothHandler::new(uart, Some(Input::new(p.PIN_2, Pull::None)));
-    let bt_shared = BT_HANDLER.init(Mutex::new(bt));
-
-    // ON LANCE LES DEUX EN MÊME TEMPS
-    spawner.spawn(ui_task(oled, light_sensor, bt_shared)).unwrap();
-    spawner.spawn(rx_task(bt_shared)).unwrap();
-
-    let mut led = Output::new(p.PIN_25, Level::Low);
-    loop {
-        led.toggle();
-        Timer::after_millis(200).await;
-    }
-}
-````
 
 ---
 
@@ -485,8 +346,8 @@ async fn main(spawner: Spawner) {
 
 | Dépendance   | Version       |
 |--------------|---------------|
-| `embassy-rp` | 0.4 à 0.10+   |
-| `itoa`       | >=1.0, <2     |
+| `embassy-rp` | 0.10          |
+| `itoa`       | 1.0           |
 | Rust edition | 2024          |
 | `no_std`     | ✓             |
 
@@ -494,13 +355,15 @@ async fn main(spawner: Spawner) {
 
 ## Historique et Compatibilité
 
-Il est recommandé d'utiliser la version **0.1.1 ou supérieure**.
+Il est recommandé d'utiliser la version **0.2.0 ou supérieure**.
+```
+[dependencies.embassy-rp]
+version = "0.10"
+features = ["unstable-pac"]
 
-Cette crate est compatible avec une large plage de versions d'`embassy-rp` (v0.4.0 à v0.10.0+).
-Si vous rencontrez un problème de compilation ou un comportement inattendu, n'hésitez pas à
-ouvrir une **Issue GitHub** votre retour est précieux !
-
-Consultez le fichier `CHANGELOG.md` pour le détail des changements.
+[dependencies]
+itoa = "1.0"
+```
 
 ---
 
